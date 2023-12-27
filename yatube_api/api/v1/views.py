@@ -77,8 +77,28 @@ class FollowViewSet(viewsets.GenericViewSet, generics.ListCreateAPIView):
 
         data['following'] = get_object_or_404(User, username=following)
 
-        serializer = self.get_serializer(data=data)
+        if data['user'] == data['following']:
+            return Response(
+                {'details': 'Невозможно подписаться на самого себя.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        follow_exist = Follow.objects.filter(
+            user=data['user'], following=data['following']
+        ).exists()
+
+        if follow_exist:
+            return Response(
+                {'details': 'Подписка уже оформлена.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        follow = Follow.objects.create(
+            user=data['user'], following=data['following']
+        )
+        serializer = FollowSerializer(follow, data=data)
         serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
 
