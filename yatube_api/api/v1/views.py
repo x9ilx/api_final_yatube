@@ -1,7 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-from rest_framework import permissions, viewsets, filters, generics, status
-from rest_framework.response import Response
+from rest_framework import permissions, viewsets, filters, generics
 
 from api.v1.serializers import (
     CommentSerializer,
@@ -9,27 +8,13 @@ from api.v1.serializers import (
     GroupSerializer,
     PostSerializer,
 )
-from posts.models import Follow, Group, Post
+from posts.models import Group, Post
 
 
 User = get_user_model()
 
 
-class BaseAuthorViewSet(viewsets.ModelViewSet):
-    """Определение базовых параметров, для объектов имеющих поле автора."""
-
-    def perform_create(self, serializer):
-        fields = {
-            'author': self.request.user,
-        }
-
-        if isinstance(self, CommentViewSet):
-            fields['post'] = self.get_post_object()
-
-        serializer.save(**fields)
-
-
-class PostViewSet(BaseAuthorViewSet):
+class PostViewSet(viewsets.ModelViewSet):
     """Представление для публикаций."""
 
     serializer_class = PostSerializer
@@ -37,8 +22,11 @@ class PostViewSet(BaseAuthorViewSet):
     def get_queryset(self):
         return Post.objects.all().select_related('group')
 
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
-class CommentViewSet(BaseAuthorViewSet):
+
+class CommentViewSet(viewsets.ModelViewSet):
     """Представление для комментариев к публикациям."""
 
     serializer_class = CommentSerializer
@@ -49,6 +37,10 @@ class CommentViewSet(BaseAuthorViewSet):
     def get_queryset(self):
         post = self.get_post_object()
         return post.comments.all()
+
+    def perform_create(self, serializer):
+        post = self.get_post_object()
+        serializer.save(author=self.request.user, post=post)
 
 
 class FollowViewSet(viewsets.GenericViewSet, generics.ListCreateAPIView):
@@ -62,49 +54,11 @@ class FollowViewSet(viewsets.GenericViewSet, generics.ListCreateAPIView):
     def get_queryset(self):
         return self.request.user.follows.all()
 
-    def create(self, request, *args, **kwargs):
-        data = {'user': request.user, 'following': ''}
-        following = ''
-
-        if 'following' in request.data:
-            following = request.data['following']
-
-        if following == '':
-            return Response(
-                {'following': 'Обязательное поле.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        data['following'] = get_object_or_404(User, username=following)
-
-        if data['user'] == data['following']:
-            return Response(
-                {'details': 'Невозможно подписаться на самого себя.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        follow_exist = Follow.objects.filter(
-            user=data['user'], following=data['following']
-        ).exists()
-
-        if follow_exist:
-            return Response(
-                {'details': 'Подписка уже оформлена.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        follow = Follow.objects.create(
-            user=data['user'], following=data['following']
-        )
-        serializer = FollowSerializer(follow, data=data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(data=serializer.data, status=status.HTTP_201_CREATED)
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
-class GroupViewSet(
-    viewsets.GenericViewSet, generics.ListAPIView, generics.RetrieveAPIView
-):
+class GroupViewSet(viewsets.ReadOnlyModelViewSet):
     """Представление для сообществ."""
 
     queryset = Group.objects.all()

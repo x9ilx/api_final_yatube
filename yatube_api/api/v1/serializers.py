@@ -1,6 +1,11 @@
+from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 
 from posts.models import Comment, Follow, Group, Post
+
+
+User = get_user_model()
 
 
 class BaseAuthorTextSerializer(serializers.ModelSerializer):
@@ -55,8 +60,40 @@ class FollowSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-        fields = (
-            'user',
-            'following',
-        )
         model = Follow
+        fields = ('user', 'following')
+
+    def to_internal_value(self, data):
+        if 'following' in data:
+            if len(data['following'].strip()) > 0:
+                following_user = get_object_or_404(
+                    User, username=data['following']
+                )
+                return {'following': following_user}
+
+        return {'following': None}
+
+    def create(self, validated_data):
+        user = validated_data['user']
+        following = validated_data['following']
+
+        if following is None:
+            raise serializers.ValidationError(
+                {'following': 'Обязательное поле'}
+            )
+        if user == following:
+            raise serializers.ValidationError(
+                {'details': 'Невозможно подписаться на самого себя.'}
+            )
+
+        follow_exist = Follow.objects.filter(
+            user=user, following=following
+        ).exists()
+
+        if follow_exist:
+            raise serializers.ValidationError(
+                {'details': 'Подписка уже оформлена.'}
+            )
+
+        follow = Follow.objects.create(user=user, following=following)
+        return follow
