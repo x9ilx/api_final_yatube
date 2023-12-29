@@ -17,10 +17,8 @@ User = get_user_model()
 class PostViewSet(viewsets.ModelViewSet):
     """Представление для публикаций."""
 
+    queryset = Post.objects.all()
     serializer_class = PostSerializer
-
-    def get_queryset(self):
-        return Post.objects.all().select_related('group')
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
@@ -53,9 +51,6 @@ class FollowViewSet(viewsets.GenericViewSet, generics.ListCreateAPIView):
 
     def get_queryset(self):
         return self.request.user.follows.all()
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
 
 
 class GroupViewSet(viewsets.ReadOnlyModelViewSet):
